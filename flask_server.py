@@ -16,7 +16,7 @@ movie_names = list(movie2movie_comma.keys())
 # Словарь индекс-фильм
 index2movie = {i: movie for movie, i in movie2index.items()}
 
-# Загружаем сохранённый словарь с ссылками на фильмы в википедии
+# Загружаем сохранённый словарь с ссылками на фильмы в Википедии
 #movie2wiki = pickle.load(open('movie2wiki.pkl', 'rb'))
 
 # Загружаем эмбеддинги
