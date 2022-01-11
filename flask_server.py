@@ -4,32 +4,28 @@ import numpy as np
 import re
 from sklearn.neighbors import KNeighborsClassifier
 
-# Задаем имя серверу
 app = Flask(__name__)
 
-# Загружаем сохранённый словарь с фильмами
+# Load the saved dictionary with movies
 movie2index = pickle.load(open('movies2index.pkl', 'rb'))
-# Словарь включающий названия фильмов с удалённой запятой
+# Names of movies with and without comma
 movie2movie_comma = {re.sub(r',', '', movie): movie for movie in movie2index.keys()}
-# Названия всех фильмов
+# Names of all movies
 movie_names = list(movie2movie_comma.keys())
-# Словарь индекс-фильм
+# Dictionary index-movie
 index2movie = {i: movie for movie, i in movie2index.items()}
 
-# Загружаем сохранённый словарь с ссылками на фильмы в Википедии
-#movie2wiki = pickle.load(open('movie2wiki.pkl', 'rb'))
-
-# Загружаем эмбеддинги
+# Load embeddings for movies
 movies_norm = pickle.load(open('movies_emb50.pkl', 'rb'))
-# Размерность эмбеддингов
+# Dimension of embeddings
 dim_embedding = 50
 
-# Загружаем рейтинги фильмов
+# Load rating for movies
 movie2raiting = pickle.load(open('movie2raiting.pkl', 'rb'))
 
 
 def prepare_classes(positive_movies, negative_movies):
-    '''Создаёт два набора данных: любимые и нелюбимые фильмы'''
+    '''Create two datasets: favorite and least favorite movies'''
 
     selected_movies = positive_movies + negative_movies
     X = np.zeros((len(selected_movies), dim_embedding))
@@ -49,13 +45,12 @@ def recommendation(positive_movies, negative_movies=[]):
     recommended_movies = []
     mean_rating = []
 
-    '''Если только один фильм в одном из классов, либо нет отрицательных фильмов,
-    то рекоммендация производится по близости эмбеддингов к эмбеддингам положительного класса.
-    Если по крайней мере есть два фильма в каждом из классов, то строится KNN классификатор
-    для рекоммендации фильмов.
-    Для рекомендуемых фильмов также выводится их средний рейтинг.'''
+    '''If there is only one movies in one of the classes, or there are no negative movies, 
+    then the recommendation is made according to the similarity of the embeddings to the embeddings of the positive class.
+    If there are at least two movies in each of the classes, then a KNN classifier is built to recommend movies.
+    Rating is also shown for recommended movies.'''
 
-    # Один пример в положительном классе
+    # Only one movie is in a positive class
     if len(positive_movies) == 1:
         movie = positive_movies[0]
         distances = np.dot(movies_norm, movies_norm[movie2index[movie]])
@@ -67,15 +62,15 @@ def recommendation(positive_movies, negative_movies=[]):
             mean_rating.append(movie2raiting[mov])
         return recommended_movies[1:], mean_rating
 
-    # Несколько примеров в положительном классе
+    # Several movies are in a positive class
     if len(positive_movies) >= 2:
 
-        # Один пример в отрицательном классе и несколько в положительном
+        # One movie is in a negative class and several movies are in a positive class
         if len(negative_movies) < 2:
             X = np.zeros((len(positive_movies), dim_embedding))
             for i, movie in enumerate(positive_movies):
                 X[i] = movies_norm[movie2index[movie]]
-            # Среднее значение для вектора эбмеддингов
+            # Average value for the vector of ebmeddings
             X = np.mean(X, axis=0)
 
             distances = np.dot(movies_norm, X)
@@ -86,24 +81,23 @@ def recommendation(positive_movies, negative_movies=[]):
                 if mov not in positive_movies:
                     recommended_movies.append(mov)
                     mean_rating.append(movie2raiting[mov])
-            # return recommended_movies[len(positive_movies):]
             return recommended_movies, mean_rating
 
-        # Несколько примеров в каждом из классов
+        # Several movies are in each of the classes
         if len(negative_movies) >= 2:
             X, Y = prepare_classes(positive_movies, negative_movies)
 
-            # Обучаем KNN классификатор
+            # Train KNN classifier
             clf = KNeighborsClassifier(n_neighbors=len(positive_movies) + 1,
                                        weights='distance', metric='minkowski', p=2)
             clf.fit(X, Y)
 
-            # Считаем вероятность отнесения ко второму классу (положительному)
+            # Calculate the probability of attribution to the second class (positive)
             movie_rating = clf.predict_proba(movies_norm)[0:, 1]
-            # Сортируем индексы фильмов по увеличению вероятности отнесения к положительному классу
+            # Sorting movie indices by increasing the probability of being classified as a positive class
             sorted_movies = np.argsort(movie_rating)[-(10 + len(positive_movies)):]
 
-            # 10 наиболее рекомендуемых фильмов
+            # Top 10 recommended movies
             for k in reversed(sorted_movies):
                 mov = index2movie[k]
                 if mov not in positive_movies:
@@ -117,19 +111,19 @@ def my_form2():
 
 @app.route('/movies', methods=['POST'])
 def my_form_post2():
-    # Для вывода результата
+    # Result output
     recommend_text = []
 
-    # Считываем текст из форм
+    # Reading text from forms
     text1 = request.form.get('name')
     text2 = request.form.get('name2')
 
     if text1 != '':
-        # Список положительных и отрицательных фильмов
+        # List of positive and negative movies
         pos_movies = text1.split(',')
         neg_movies = text2.split(',')
 
-        # Перейдём к обычным названиям с запятой
+        # Go to the usual names with comma
         if len(pos_movies) > 1:
             pos_movies = [movie2movie_comma[mov] for mov in pos_movies]
         elif len(pos_movies) == 1:
@@ -140,7 +134,7 @@ def my_form_post2():
         print('Positive:', pos_movies)
         print('Negative:', neg_movies)
 
-        # Вызываем функцию, делающую рекоммендации
+        # Calling the function that makes recommendations
         recommended_movies, rate_movies = recommendation(pos_movies, neg_movies)
 
         for movie, rate in zip(recommended_movies, rate_movies):
@@ -161,5 +155,4 @@ def hello():
 
 if __name__ == '__main__':
     #app.debug = True
-    #app.run()
     app.run(host='0.0.0.0')
