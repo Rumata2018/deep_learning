@@ -2,6 +2,7 @@ from flask import Flask, request, render_template
 import pickle as pickle
 import numpy as np
 import re
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.neighbors import KNeighborsClassifier
 
 app = Flask(__name__)
@@ -16,7 +17,7 @@ movie_names = list(movie2movie_comma.keys())
 index2movie = {i: movie for movie, i in movie2index.items()}
 
 # Load embeddings for movies
-movies_norm = pickle.load(open('movies_emb50.pkl', 'rb'))
+movie_weights = pickle.load(open('movies_emb50.pkl', 'rb'))
 # Dimension of embeddings
 dim_embedding = 50
 
@@ -32,7 +33,7 @@ def prepare_classes(positive_movies, negative_movies):
     Y = np.zeros(len(selected_movies))
 
     for i, movie in enumerate(selected_movies):
-        X[i] = movies_norm[movie2index[movie]]
+        X[i] = movie_weights[movie2index[movie]]
         if movie in positive_movies:
             Y[i] = 1
         else:
@@ -53,14 +54,15 @@ def recommendation(positive_movies, negative_movies=[]):
     # Only one movie is in a positive class
     if len(positive_movies) == 1:
         movie = positive_movies[0]
-        distances = np.dot(movies_norm, movies_norm[movie2index[movie]])
+        #distances = np.dot(movies_norm, movies_norm[movie2index[movie]])
+        distances = cosine_similarity(movie_weights, [movie_weights[movie2index[movie]]])[:, 0]
         similar = np.argsort(distances)[-11:]
 
         for k in reversed(similar):
             mov = index2movie[k]
             recommended_movies.append(mov)
             mean_rating.append(movie2raiting[mov])
-        return recommended_movies[1:], mean_rating
+        return recommended_movies[1:], mean_rating[1:]
 
     # Several movies are in a positive class
     if len(positive_movies) >= 2:
@@ -69,11 +71,12 @@ def recommendation(positive_movies, negative_movies=[]):
         if len(negative_movies) < 2:
             X = np.zeros((len(positive_movies), dim_embedding))
             for i, movie in enumerate(positive_movies):
-                X[i] = movies_norm[movie2index[movie]]
+                X[i] = movie_weights[movie2index[movie]]
             # Average value for the vector of ebmeddings
             X = np.mean(X, axis=0)
 
-            distances = np.dot(movies_norm, X)
+            #distances = np.dot(movies_norm, X)
+            distances = cosine_similarity(movie_weights, [X])[:, 0]
             similar = np.argsort(distances)[-(10 + len(positive_movies)):]
 
             for k in reversed(similar):
@@ -93,7 +96,7 @@ def recommendation(positive_movies, negative_movies=[]):
             clf.fit(X, Y)
 
             # Calculate the probability of attribution to the second class (positive)
-            movie_rating = clf.predict_proba(movies_norm)[0:, 1]
+            movie_rating = clf.predict_proba(movie_weights)[0:, 1]
             # Sorting movie indices by increasing the probability of being classified as a positive class
             sorted_movies = np.argsort(movie_rating)[-(10 + len(positive_movies)):]
 
